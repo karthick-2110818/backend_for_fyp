@@ -1,46 +1,54 @@
 const express = require("express");
+const cors = require("cors");
 const bodyParser = require("body-parser");
 
 const app = express();
-const port = 10000;
+const PORT = process.env.PORT || 5000;
 
-// Middleware to parse JSON data
+// Middleware
+app.use(cors());
 app.use(bodyParser.json());
 
-// Dummy endpoint for testing
-app.get("/", (req, res) => {
-    res.send("Backend is working!");
-});
+// Store last product details to avoid duplicate updates
+let lastProduct = {
+  name: null,
+  weight: 0,
+  price: 0,
+};
 
-// Endpoint to handle POST requests from Raspberry Pi
+// Function to check if a product update is significant
+const isSignificantChange = (newProduct) => {
+  if (lastProduct.name !== newProduct.name) return true; // New product detected
+  if (Math.abs(lastProduct.weight - newProduct.weight) > 5) return true; // Weight change > 5g
+  return false;
+};
+
+// Route to receive product data
 app.post("/product", (req, res) => {
+  try {
     const { name, weight, price, freshness } = req.body;
 
-    // Log the received data for debugging
-    console.log("Received product data:");
-    console.log("Name:", name);
-    console.log("Weight:", weight);
-    console.log("Price:", price);
-    console.log("Freshness:", freshness);
-
-    // Validation: Ensure the necessary fields are present
     if (!name || weight === undefined || price === undefined || !freshness) {
-        console.log("Missing required fields!");
-        return res.status(400).json({ message: "Missing required fields" });
+      return res.status(400).json({ error: "Invalid product data" });
     }
 
-    // Process the received data (e.g., storing or processing the product)
-    console.log(`Processing Product: ${name}`);
-    console.log(`Weight: ${weight}g, Price: $${price.toFixed(2)}, Freshness: ${freshness}`);
+    const newProduct = { name, weight, price, freshness };
 
-    // Respond back to the Raspberry Pi with a success message
-    res.status(200).json({
-        message: "Product data successfully received and processed",
-        product: { name, weight, price, freshness }
-    });
+    if (isSignificantChange(newProduct)) {
+      lastProduct = newProduct; // Update last detected product
+      console.log(`✅ New Product Detected: ${JSON.stringify(newProduct)}`);
+      res.status(200).json({ message: "Product updated", product: newProduct });
+    } else {
+      console.log("🔄 Duplicate/Insignificant update ignored.");
+      res.status(200).json({ message: "No significant update" });
+    }
+  } catch (error) {
+    console.error("⚠️ Error processing product:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
 });
 
-// Start the server
-app.listen(port, () => {
-    console.log(`Backend server running on http://localhost:${port}`);
+// Start server
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
