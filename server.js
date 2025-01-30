@@ -1,88 +1,49 @@
-const express = require('express')
+const express = require('express');
 const bodyParser = require('body-parser');
-const cors = require('cors');
+const app = express();
+const port = 10000;
 
-const app = express()
-const port = process.env.PORT || 10000;
-
-let products = [];
-let orders = [];
-app.use(cors());
-
-app.use(bodyParser.urlencoded({ extended: false }));
+// Middleware to parse JSON body
 app.use(bodyParser.json());
 
-app.get('/', (req, res) => {
-    res.send("API deployment successful");
-});
+// Sample in-memory storage (You can replace it with a database like MongoDB, MySQL, etc.)
+let products = [];
 
-// POST to add new product
+// Endpoint to receive product data from the Raspberry Pi
 app.post('/product', (req, res) => {
-    const product = req.body;
+    const { name, weight, price, freshness } = req.body;
 
-    // Validate product data
-    if (!product.id || !product.name || !product.price || !product.taken || !product.payable) {
-        return res.status(400).send('Invalid product data');
+    // Validate the incoming data
+    if (!name || !weight || !price || !freshness) {
+        return res.status(400).json({ message: 'Missing required fields' });
     }
 
-    console.log('Product added:', product);
+    // Store or process the product data
+    const product = {
+        name,
+        weight,
+        price,
+        freshness,
+        timestamp: new Date().toISOString()
+    };
+
+    // For simplicity, store products in an array
     products.push(product);
-    res.send('Product added successfully');
+
+    // For more complex applications, you can save this data to a database
+
+    console.log(`Received product: ${JSON.stringify(product)}`);
+
+    // Respond with success
+    res.status(200).json({ message: 'Product data received successfully', product });
 });
 
-// GET all products
-app.get('/product', (req, res) => {
+// Endpoint to retrieve all received products (for testing purposes)
+app.get('/products', (req, res) => {
     res.json(products);
 });
 
-// GET a specific product by id
-app.get('/product/:id', (req, res) => {
-    const id = req.params.id;
-    const product = products.find(p => p.id === parseInt(id));
-
-    if (product) {
-        res.json(product);
-    } else {
-        res.status(404).send('Product not found');
-    }
+// Start the server
+app.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}`);
 });
-
-// DELETE product by id
-app.delete('/product/:id', (req, res) => {
-    const id = req.params.id;
-    products = products.filter(i => i.id !== parseInt(id));
-    res.send('Product deleted successfully');
-});
-
-// POST to update a product by id
-app.post('/product/:id', (req, res) => {
-    const id = req.params.id;
-    const updatedProduct = req.body;
-
-    const index = products.findIndex(p => p.id === parseInt(id));
-    if (index === -1) {
-        return res.status(404).send('Product not found');
-    }
-
-    products[index] = updatedProduct;
-    res.send('Product updated successfully');
-});
-
-// POST to handle checkout
-app.post('/checkout', (req, res) => {
-    const order = req.body;
-    if (!order || !order.items || order.items.length === 0) {
-        return res.status(400).send('Invalid order data');
-    }
-
-    orders.push(order);
-    console.log('Order placed:', order);
-    res.send('Order placed successfully');
-});
-
-// GET all orders
-app.get('/checkout', (req, res) => {
-    res.json(orders);
-});
-
-app.listen(port, () => console.log(`Server listening on port ${port}!`));
