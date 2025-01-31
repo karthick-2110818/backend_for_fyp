@@ -1,9 +1,13 @@
 const express = require("express");
 const cors = require("cors");
+const bodyParser = require("body-parser"); // Body-parser for legacy support
 
 const app = express();
-app.use(express.json());
 app.use(cors());
+
+// Middleware to parse incoming request bodies in JSON format
+app.use(express.json()); // For modern Express versions
+app.use(bodyParser.json()); // For backward compatibility, if needed
 
 let cart = {}; // Store items with weight and price
 
@@ -16,25 +20,8 @@ app.post("/product", (req, res) => {
         return res.status(400).json({ message: "Invalid data received" });
     }
 
-    if (!cart[name]) {
-        // New item added
-        cart[name] = { weight, price, freshness };
-    } else {
-        const prevWeight = cart[name].weight;
-
-        if (weight > prevWeight + 5) {
-            // Adding more to the same item batch
-            cart[name].weight = weight;
-            cart[name].price = price;
-        } else if (weight < prevWeight - 5) {
-            // Removing some of the item
-            cart[name].weight = weight;
-            cart[name].price = price;
-        } else {
-            // No significant weight change, ignore update
-            return res.status(200).json({ message: "No significant update" });
-        }
-    }
+    // New item or update existing item
+    cart[name] = { weight, price, freshness };
 
     console.log(`✅ Updated Cart:`, cart);
     return res.status(200).json({ message: "Product updated", cart });
@@ -53,7 +40,7 @@ app.post("/clear-cart", (req, res) => {
 });
 
 // Start Server
-const PORT = 5000;
+const PORT = 10000; // Listen on port 10000
 app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
