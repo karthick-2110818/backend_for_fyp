@@ -1,46 +1,50 @@
-const express = require("express");
-const cors = require("cors");
-const bodyParser = require("body-parser"); // Body-parser for legacy support
+const express = require('express');
+const bodyParser = require('body-parser');
+const cors = require('cors');
 
+// Initialize the Express app
 const app = express();
+
+// Middleware to parse incoming JSON requests
+app.use(bodyParser.json());
+
+// Enable Cross-Origin Resource Sharing (CORS) to allow your Raspberry Pi to communicate with the server
 app.use(cors());
 
-// Middleware to parse incoming request bodies in JSON format
-app.use(express.json()); // For modern Express versions
-app.use(bodyParser.json()); // For backward compatibility, if needed
+// In-memory store for product data (you can switch to a database in production)
+let products = {};
 
-let cart = {}; // Store items with weight and price
-
-// Add or update product
-app.post("/product", (req, res) => {
+// Endpoint to receive product data from Raspberry Pi and store it
+app.post('/product', (req, res) => {
     const { name, weight, price, freshness } = req.body;
 
-    // Validate data
-    if (!name || weight < 0 || price < 0) {
-        return res.status(400).json({ message: "Invalid data received" });
+    if (!name || weight === undefined || price === undefined || !freshness) {
+        return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // New item or update existing item
-    cart[name] = { weight, price, freshness };
+    // Check if the product already exists, and update it if necessary
+    if (products[name]) {
+        // Update the existing product data with the new information
+        products[name].weight = weight;
+        products[name].price = price;
+        products[name].freshness = freshness;
+    } else {
+        // Add a new product to the store
+        products[name] = { weight, price, freshness };
+    }
 
-    console.log(`✅ Updated Cart:`, cart);
-    return res.status(200).json({ message: "Product updated", cart });
+    console.log(`Product received: ${name} - Weight: ${weight}g - Price: $${price} - Freshness: ${freshness}`);
+    
+    res.status(200).json({ message: 'Product data received successfully' });
 });
 
-// Get cart data
-app.get("/cart", (req, res) => {
-    res.json(cart);
+// Endpoint to get the list of products (for debugging or frontend)
+app.get('/products', (req, res) => {
+    res.status(200).json(products);
 });
 
-// Clear cart (for checkout/reset)
-app.post("/clear-cart", (req, res) => {
-    cart = {};
-    console.log("🛒 Cart Cleared");
-    res.json({ message: "Cart cleared" });
-});
-
-// Start Server
-const PORT = 10000; // Listen on port 10000
+// Start the server on port 3000 (you can change this port if needed)
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
