@@ -1,54 +1,59 @@
 const express = require("express");
 const cors = require("cors");
-const bodyParser = require("body-parser");
 
 const app = express();
-const PORT = process.env.PORT || 5000;
-
-// Middleware
+app.use(express.json());
 app.use(cors());
-app.use(bodyParser.json());
 
-// Store last product details to avoid duplicate updates
-let lastProduct = {
-  name: null,
-  weight: 0,
-  price: 0,
-};
+let cart = {}; // Store items with weight and price
 
-// Function to check if a product update is significant
-const isSignificantChange = (newProduct) => {
-  if (lastProduct.name !== newProduct.name) return true; // New product detected
-  if (Math.abs(lastProduct.weight - newProduct.weight) > 5) return true; // Weight change > 5g
-  return false;
-};
-
-// Route to receive product data
+// Add or update product
 app.post("/product", (req, res) => {
-  try {
     const { name, weight, price, freshness } = req.body;
 
-    if (!name || weight === undefined || price === undefined || !freshness) {
-      return res.status(400).json({ error: "Invalid product data" });
+    // Validate data
+    if (!name || weight < 0 || price < 0) {
+        return res.status(400).json({ message: "Invalid data received" });
     }
 
-    const newProduct = { name, weight, price, freshness };
-
-    if (isSignificantChange(newProduct)) {
-      lastProduct = newProduct; // Update last detected product
-      console.log(`✅ New Product Detected: ${JSON.stringify(newProduct)}`);
-      res.status(200).json({ message: "Product updated", product: newProduct });
+    if (!cart[name]) {
+        // New item added
+        cart[name] = { weight, price, freshness };
     } else {
-      console.log("🔄 Duplicate/Insignificant update ignored.");
-      res.status(200).json({ message: "No significant update" });
+        const prevWeight = cart[name].weight;
+
+        if (weight > prevWeight + 5) {
+            // Adding more to the same item batch
+            cart[name].weight = weight;
+            cart[name].price = price;
+        } else if (weight < prevWeight - 5) {
+            // Removing some of the item
+            cart[name].weight = weight;
+            cart[name].price = price;
+        } else {
+            // No significant weight change, ignore update
+            return res.status(200).json({ message: "No significant update" });
+        }
     }
-  } catch (error) {
-    console.error("⚠️ Error processing product:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
+
+    console.log(`✅ Updated Cart:`, cart);
+    return res.status(200).json({ message: "Product updated", cart });
 });
 
-// Start server
+// Get cart data
+app.get("/cart", (req, res) => {
+    res.json(cart);
+});
+
+// Clear cart (for checkout/reset)
+app.post("/clear-cart", (req, res) => {
+    cart = {};
+    console.log("🛒 Cart Cleared");
+    res.json({ message: "Cart cleared" });
+});
+
+// Start Server
+const PORT = 5000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
