@@ -8,10 +8,10 @@ const app = express();
 // Middleware to parse incoming JSON requests
 app.use(bodyParser.json());
 
-// Enable Cross-Origin Resource Sharing (CORS) to allow your Raspberry Pi to communicate with the server
+// Enable Cross-Origin Resource Sharing (CORS)
 app.use(cors());
 
-// In-memory store for product data (you can switch to a database in production)
+// In-memory store for product data (could use database for production)
 let products = {};
 
 // Endpoint to receive product data from Raspberry Pi and store it
@@ -22,14 +22,12 @@ app.post('/product', (req, res) => {
         return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Check if the product already exists, and update it if necessary
+    // Check if the product already exists, and update it
     if (products[name]) {
-        // Update the existing product data with the new information
         products[name].weight = weight;
         products[name].price = price;
         products[name].freshness = freshness;
     } else {
-        // Add a new product to the store
         products[name] = { weight, price, freshness };
     }
 
@@ -38,13 +36,15 @@ app.post('/product', (req, res) => {
     res.status(200).json({ message: 'Product data received successfully' });
 });
 
-// Endpoint to get the list of products (for debugging or frontend)
+// Endpoint to get the list of products (fetches current products for checkout)
 app.get('/products', (req, res) => {
+    // Simulate fetching products for a particular session
+    // (can be enhanced with session or user ID to track customer-specific products)
     res.status(200).json(products);
 });
 
-// Start the server on port 3000 (you can change this port if needed)
-const PORT = process.env.PORT || 3000;
+// Start the server
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
