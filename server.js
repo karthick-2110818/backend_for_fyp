@@ -60,19 +60,6 @@ app.post('/product/update', (req, res) => {
     return res.status(404).json({ error: 'Product not found' });
 });
 
-// Endpoint to delete a product
-app.delete('/product/:name', (req, res) => {
-    const { name } = req.params;
-
-    if (products[name]) {
-        delete products[name];
-        console.log(`Product deleted: ${name}`);
-        return res.status(200).json({ message: 'Product deleted successfully' });
-    }
-
-    return res.status(404).json({ error: 'Product not found' });
-});
-
 // Start the server
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
