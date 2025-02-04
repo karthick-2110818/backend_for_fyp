@@ -51,7 +51,7 @@ app.post('/product', (req, res) => {
     }
 
     products[name] = { weight, price, freshness };
-    console.log(`Product received: ${name} - Weight: ${weight}g - Price: $${price} - Freshness: ${freshness}`);
+    console.log(`Product received: ${name} - Weight: ${weight}g - Price: ₹${price} - Freshness: ${freshness}`);
 
     broadcastUpdate();
     res.status(200).json({ message: 'Product data received successfully' });
