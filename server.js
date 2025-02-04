@@ -75,7 +75,7 @@ app.post('/product/update', (req, res) => {
         products[name].price = price;
         products[name].freshness = freshness;
 
-        console.log(`Product updated: ${name} - Weight: ${weight}g - Price: $${price} - Freshness: ${freshness}`);
+        console.log(`Product updated: ${name} - Weight: ${weight}g - Price: ₹${price} - Freshness: ${freshness}`);
         broadcastUpdate();
 
         return res.status(200).json({ message: 'Product updated successfully' });
