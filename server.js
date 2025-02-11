@@ -1,147 +1,99 @@
-import cv2
-from picamera2 import Picamera2
-from ultralytics import YOLO
-import cvzone
-from hx711 import HX711
-import RPi.GPIO as GPIO
-import time
-import requests
-import json
+const express = require('express');
+const bodyParser = require('body-parser');
+const cors = require('cors');
 
-# Initialize the HX711 load cell
-GPIO.setmode(GPIO.BCM)
-hx = HX711(dout_pin=20, pd_sck_pin=21)
-hx.set_scale_ratio(419.569)
-hx.zero()
+const app = express();
 
-# Define classes for freshness detection
-classes = [
-    "Fresh-Apple", "Fresh-Mango", "Fresh-Banana", "FreshBellpepper", "FreshCarrot",
-    "FreshCucumber", "FreshOrange", "FreshPotato", "FreshStrawberry", "FreshTomato",
-    "Rotten-Apple", "RottenBanana", "RottenBellpepper", "RottenCarrot", "RottenCucumber",
-    "RottenMango", "RottenOrange", "RottenPotato", "RottenStrawberry", "RottenTomato"
-]
+app.use(bodyParser.json());
+app.use(cors());
 
-# Initialize the Picamera2
-picam2 = Picamera2()
-picam2.preview_configuration.main.size = (480, 480)
-picam2.preview_configuration.main.format = "RGB888"
-picam2.preview_configuration.align()
-picam2.configure("preview")
-picam2.start()
+let products = {};  // Stores product data
+let clients = [];   // Stores connected SSE clients
+const weightThreshold = 5; // Weight change threshold (grams)
 
-# Load the YOLOv8 model
-model = YOLO("best.onnx")
+// **[1] SSE Endpoint for Real-Time Updates**
+app.get('/stream-products', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
 
-# Define pricing per gram for fresh items (example values)
-pricing = {
-    "Fresh-Apple": 0.05, "Fresh-Mango": 0.06, "Fresh-Banana": 0.03,
-    "FreshBellpepper": 0.04, "FreshCarrot": 0.02, "FreshCucumber": 0.03,
-    "FreshOrange": 0.05, "FreshPotato": 0.01, "FreshStrawberry": 0.10,
-    "FreshTomato": 0.04
+    clients.push(res);
+
+    res.write(`data: ${JSON.stringify(getCurrentProducts())}\n\n`);
+
+    req.on('close', () => {
+        clients = clients.filter(client => client !== res);
+    });
+});
+
+// **Helper Function: Send Updates to All Connected Clients**
+function broadcastUpdate() {
+    const data = JSON.stringify(getCurrentProducts());
+    clients.forEach(client => client.write(`data: ${data}\n\n`));
 }
 
-# Initialize variables
-count = 0
-logged_items = {}  # Track logged items with weight and price
+// **Helper Function: Get Only Valid Products**
+function getCurrentProducts() {
+    return Object.entries(products)
+        .filter(([_, product]) => product.weight > 0 && product.price > 0)  // Remove misdetections
+        .map(([name, details]) => ({ name, ...details }));  
+}
 
-# Backend URL (Modify with your backend URL)
-url = "https://backend-for-fyp.onrender.com"  # Replace with your backend URL if needed
+// **[2] Product Addition or Update (Handles Weight Threshold)**
+app.post('/product', (req, res) => {
+    const { name, weight, price, freshness } = req.body;
 
-# Function to calculate weight
-def get_weight():
-    try:
-        weight = hx.get_weight_mean(20)  # Ensure no negative weights
-        print(f"Weight: {weight:.2f} g")
-        return weight
-    except Exception as e:
-        print(f"Error reading weight: {e}")
-        return 0
-
-# Function to send product data to the backend API
-def post_to_backend(class_name, weight, price):
-    # Round weight and price to two decimal places for consistency
-    weight = round(weight, 2)
-    price = round(price, 2)
-
-    data = {
-        "name": class_name,
-        "weight": weight,
-        "price": price,
-        "freshness": "Fresh" if "fresh" in class_name.lower() else "Rotten"
+    if (!name || weight === undefined || price === undefined || !freshness) {
+        return res.status(400).json({ error: 'Missing required fields' });
     }
-    
-    # Send POST request to the backend
-    headers = {"Content-Type": "application/json"}
-    try:
-        response = requests.post(f"{url}/product", json=data, headers=headers)
-        if response.status_code == 200:
-            print(f"Successfully sent data for {class_name}")
-        else:
-            print(f"Failed to send data for {class_name}. Status Code: {response.status_code}")
-    except Exception as e:
-        print(f"Error sending data to backend: {e}")
 
-# Main loop
-while True:
-    frame = picam2.capture_array()
+    if (weight < 0 || price <= 0) {
+        return res.status(400).json({ error: 'Invalid product detected (negative weight or zero price)' });
+    }
 
-    count += 1
-    if count % 3 != 0:
-        continue
+    if (products[name]) {
+        const prevWeight = products[name].weight;
 
-    frame = cv2.flip(frame, -1)
+        // Check if weight change is significant
+        if (Math.abs(weight - prevWeight) > weightThreshold) {
+            products[name] = { weight, price, freshness };
+            console.log(`Updated product: ${name} - Weight: ${weight}g - Price: ₹${price} - Freshness: ${freshness}`);
+            broadcastUpdate();
+            return res.status(200).json({ message: 'Product updated successfully' });
+        } else {
+            console.log(`No significant update for ${name}, Weight: ${weight}g`);
+            return res.status(200).json({ message: 'No significant change in weight' });
+        }
+    } else {
+        // New product detection
+        products[name] = { weight, price, freshness };
+        console.log(`New product detected: ${name} - Weight: ${weight}g - Price: ₹${price} - Freshness: ${freshness}`);
+        broadcastUpdate();
+        return res.status(200).json({ message: 'Product data received successfully' });
+    }
+});
 
-    # Run YOLOv8 inference
-    results = model.predict(frame, imgsz=240)
+// **[3] Get Products for Checkout (Filters Invalid Items)**
+app.get('/products', (req, res) => {
+    res.status(200).json(getCurrentProducts());
+});
 
-    # Process detection results
-    for result in results:
-        boxes = result.boxes.xyxy.numpy() if result.boxes.xyxy is not None else []
-        class_ids = result.boxes.cls.numpy() if result.boxes.cls is not None else []
-        confidences = result.boxes.conf.numpy() if result.boxes.conf is not None else []
+// **[4] Delete Product (Allows Re-detection)**
+app.delete('/product/:name', (req, res) => {
+    const { name } = req.params;
 
-        for box, class_id, conf in zip(boxes, class_ids, confidences):
-            class_name = classes[int(class_id)]
-            x1, y1, x2, y2 = map(int, box)
+    if (products[name]) {
+        delete products[name];
+        broadcastUpdate();
+        console.log(`Product ${name} deleted. It can now be detected again.`);
+        return res.status(200).json({ message: `Product ${name} deleted successfully.` });
+    }
 
-            weight = get_weight()
-            price_per_gram = pricing.get(class_name, 0)
-            total_price = weight * price_per_gram
+    return res.status(404).json({ error: `Product ${name} not found.` });
+});
 
-            # Check if the same product is detected again within the same batch
-            if class_name not in logged_items:
-                # New item detection (not logged yet)
-                logged_items[class_name] = {'weight': weight, 'price': total_price}
-                post_to_backend(class_name, weight, total_price)
-                print(f"New Product Detected: {class_name}, Weight: {weight:.2f}g, Price: Rs.{total_price:.2f}")
-                cvzone.putTextRect(frame, f"{class_name} - {weight:.2f}g - Rs.{total_price:.2f}", (x1, y1 - 10), 1, 1)
-
-            else:
-                # Product already logged, check weight threshold
-                prev_weight = logged_items[class_name]['weight']
-                if abs(weight - prev_weight) > 5:  # Check if weight difference is greater than 5g
-                    logged_items[class_name] = {'weight': weight, 'price': total_price}
-                    post_to_backend(class_name, weight, total_price)
-                    print(f"Weight updated for {class_name}, New Weight: {weight:.2f}g, New Price: Rs.{total_price:.2f}")
-                    cvzone.putTextRect(frame, f"{class_name} - Updated - {weight:.2f}g - Rs.{total_price:.2f}", (x1, y1 - 10), 1, 1)
-
-                else:
-                    # No significant weight change, do not update
-                    print(f"No significant update for {class_name}. Weight: {weight:.2f}g")
-
-            # Draw bounding box
-            color = (0, 255, 0) if "Fresh" in class_name else (0, 0, 255)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-
-    # Display the frame
-    cv2.imshow("Autonomous Checkout", frame)
-
-    if cv2.waitKey(1) & 0xFF == ord("q"):
-        break
-
-# Clean up
-picam2.stop()
-GPIO.cleanup()
-cv2.destroyAllWindows()
-
+// **Start the Server on Port 10000**
+const PORT = 10000;
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
