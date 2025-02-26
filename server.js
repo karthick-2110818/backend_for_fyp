@@ -32,10 +32,10 @@ function broadcastUpdate() {
     clients.forEach(client => client.write(`data: ${data}\n\n`));
 }
 
-// **Helper Function: Get Only Valid Products**
+// **Helper Function: Get Only Valid Products (Now Allows Rotten Products)**
 function getCurrentProducts() {
     return Object.entries(products)
-        .filter(([_, product]) => product.weight > 0 && product.price >= 0)  // Remove misdetections
+        .filter(([_, product]) => product.weight >= 2 && product.price >= 0)  // Prevents filtering out rotten products
         .map(([name, details]) => ({ name, ...details }));  
 }
 
@@ -43,12 +43,14 @@ function getCurrentProducts() {
 app.post('/product', (req, res) => {
     const { name, weight, price, freshness } = req.body;
 
+    console.log(`Received product: ${name} | Weight: ${weight}g | Price: ₹${price} | Freshness: ${freshness}`);
+
     if (!name || weight === undefined || price === undefined || !freshness) {
         return res.status(400).json({ error: 'Missing required fields' });
     }
 
     if (weight < 0 || price < 0) {
-        return res.status(400).json({ error: 'Invalid product detected (negative weight or zero price)' });
+        return res.status(400).json({ error: 'Invalid product detected (negative weight or negative price)' });
     }
 
     if (products[name]) {
@@ -57,17 +59,17 @@ app.post('/product', (req, res) => {
         // Check if weight change is significant
         if (Math.abs(weight - prevWeight) > weightThreshold) {
             products[name] = { weight, price, freshness };
-            console.log(`Updated product: ${name} - Weight: ${weight}g - Price: ₹${price} - Freshness: ${freshness}`);
+            console.log(`✅ Updated product: ${name} - Weight: ${weight}g - Price: ₹${price} - Freshness: ${freshness}`);
             broadcastUpdate();
             return res.status(200).json({ message: 'Product updated successfully' });
         } else {
-            console.log(`No significant update for ${name}, Weight: ${weight}g`);
+            console.log(`⚠️ No significant update for ${name}, Weight: ${weight}g`);
             return res.status(200).json({ message: 'No significant change in weight' });
         }
     } else {
         // New product detection
         products[name] = { weight, price, freshness };
-        console.log(`New product detected: ${name} - Weight: ${weight}g - Price: ₹${price} - Freshness: ${freshness}`);
+        console.log(`🆕 New product detected: ${name} - Weight: ${weight}g - Price: ₹${price} - Freshness: ${freshness}`);
         broadcastUpdate();
         return res.status(200).json({ message: 'Product data received successfully' });
     }
@@ -85,7 +87,7 @@ app.delete('/product/:name', (req, res) => {
     if (products[name]) {
         delete products[name];
         broadcastUpdate();
-        console.log(`Product ${name} deleted. It can now be detected again.`);
+        console.log(`❌ Product ${name} deleted. It can now be detected again.`);
         return res.status(200).json({ message: `Product ${name} deleted successfully.` });
     }
 
@@ -95,5 +97,5 @@ app.delete('/product/:name', (req, res) => {
 // **Start the Server on Port 10000**
 const PORT = 10000;
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}`);
 });
