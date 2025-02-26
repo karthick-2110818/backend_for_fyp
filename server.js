@@ -35,7 +35,7 @@ function broadcastUpdate() {
 // **Helper Function: Get Only Valid Products**
 function getCurrentProducts() {
     return Object.entries(products)
-        .filter(([_, product]) => product.weight > 0 && product.price > 0)  // Remove misdetections
+        .filter(([_, product]) => product.weight > 0 && product.price >= 0)  // Remove misdetections
         .map(([name, details]) => ({ name, ...details }));  
 }
 
@@ -47,7 +47,7 @@ app.post('/product', (req, res) => {
         return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    if (weight < 0 || price <= 0) {
+    if (weight < 0 || price < 0) {
         return res.status(400).json({ error: 'Invalid product detected (negative weight or zero price)' });
     }
 
